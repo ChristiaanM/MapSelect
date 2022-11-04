@@ -1,0 +1,13 @@
+build/
+.vscode
+bin/
+lib/
+maps/
+
+*.yaml
+*.keyframes
+*.mappoints
+*.features
+*.select
+*.log
+*.tracking

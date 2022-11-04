@@ -1,0 +1,140 @@
+/**
+* This file is part of MapSelect. It is a modified version from the OSMAP library 
+* Copyright (C) 2022 Christiaan Johann Müller
+* Copyright (C) 2018-2019 Alejandro Silvestri <alejandrosilvestri at gmail>
+* For more information see <https://github.com/AlejandroSilvestri/osmap>
+*
+* OSMAP is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* OSMAP is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with OSMAP. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
+OSMAP: Map serialization structure definition, for ORB-SLAM2.
+Messages are ORB-SLAM2 objects minimal serialization.  They ommit not used properties: those effimeral and those that can be regenerated.
+Repeated fields can be ommited.  Their ommission can compromise the map integrity.
+*/
+
+syntax = "proto3";
+
+// 256 bits descriptor: 32 bytes, 8 uint32.  Exactly 8 fixed32 required.
+message SerializedDescriptor{
+  repeated fixed32 block = 1;
+}
+
+// Pose, first 12 elements in an homogeneous 4x4 pose matrix. Exactly 12 float required.
+message SerializedPose{
+  repeated float element = 1;
+}
+
+
+
+// 3x1 Mat 3D position, all 3 fields required.
+message SerializedPosition{
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+//  KeyPoint, 4 fields required, uright optional
+message SerializedKeypoint{
+  float ptx    = 1;
+  float pty    = 2;
+  float angle  = 3;
+  float octave = 4;
+}
+
+// Intrinsic matrix K, all 4 fields required. baseline required to parse stereo info
+message SerializedK{
+  float fx = 1;
+  float fy = 2;
+  float cx = 3;
+  float cy = 4;
+  float baseline = 5;
+}
+
+message SerializedKArray{
+  repeated SerializedK k = 1;
+}
+
+// MapPoint, all fields optional, should provide position at least.
+message SerializedMappoint{
+  uint32 id                       = 1;  // mnId
+  SerializedPosition position     = 2;  // mWorldPos
+  float visible                   = 3;  // mnVisible
+  float found                     = 4;  // mnFound
+  SerializedDescriptor briefdescriptor = 5;  // mDescriptor, very optional.  This field is named briefdescriptor instead of descriptor because the latter is a reserved word in protocol buffers.
+}
+
+message SerializedMappointArray{
+  repeated SerializedMappoint mappoint = 1;
+}
+
+
+// KeyFrame, all fields optional, should provide pose at least.
+message SerializedKeyframe{
+  uint32 id             		= 1;  // mnId
+  SerializedPose pose   		= 2;  // mTcw
+  SerializedK kmatrix			= 3;  // K matrix, alternative to index k
+  uint32 kindex         		= 4;  // index to matrix list K, ignored if kmatrix is present
+  repeated uint32 loopedgesids 	= 5;  // indexes to keyframes connected in a loop
+  double timestamp				= 6;  // Time stamp
+  map<uint32, float> bow        = 7; // Bag of words vector
+  repeated SerializedPoseEdge marg_edges = 8;
+}
+
+message SerializedKeyframeArray{
+  repeated SerializedKeyframe keyframe = 1;
+}
+
+
+// One observed feature in a keyframe.
+message SerializedFeature{
+  uint32 mappoint_id              = 2;  // mappoint id used to construct mvpMapPoints
+  SerializedKeypoint keypoint     = 3;  // element of mvKeysUn
+  SerializedDescriptor briefdescriptor = 4;  // row of mDescriptors.  This field is named briefdescriptor instead of descriptor because the latter is a reserved word in protocol buffers.
+  float uright = 5;
+}
+
+// All observed features in a keyframe.  keyframe_id required.
+message SerializedKeyframeFeatures{
+  uint32 keyframe_id                 = 1;  // kfId, keyframe id
+  repeated SerializedFeature feature = 2;
+}
+
+message SerializedKeyframeFeaturesArray{
+  repeated SerializedKeyframeFeatures feature = 1;
+}
+
+
+message SerializedTrackingFrame{
+  SerializedPose pose = 1;
+  uint32 ref_keyframe = 2;
+  double frame_time   = 3;
+  bool lost           = 4;
+}
+
+message SerializedTrackingFramesArray
+{
+    repeated SerializedTrackingFrame frame = 1; // Tracking Data to reconstruct trajectory.
+    repeated SerializedFeature track_feature = 2; // Last frame features
+}
+
+message SerializedPoseEdge
+{
+    uint32 ref_id = 1;
+    uint32 cnt = 2;
+    repeated double info = 3; // upper triangular elements of the measurement information matrix (21) for (6x6)
+    repeated double measurement = 4;
+}
+
+
