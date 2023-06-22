@@ -42,28 +42,8 @@ run the "build.sh" script in the root directory
 
 ## Common Problems
 
-Having multiple versions of protocall buffers can cause issues with linking at runtime. If you are on a linux based machine, be sure to check that 
+Having multiple versions of protocal buffers can cause issues with linking at runtime. If you are on a linux based machine, be sure to check that 
 protoc --version is the same version than what is linked as compilation time. 
-
-## Basic usage
-
-Most included functions and algorithms are available via the included binary (mselect) located in the bin folder.
-
-To use this binary, you must first generate a saved map to run a map point selection approach on (See https://github.com/ChristiaanM/ORB_SLAM2_Selection for more details).
-
-Some example selection queries
-
-Randomly selected 5000 map points from the OSMAP file
-
-> ./mselect -a random -i ./maps/kitti05_2200.yaml -n 5000
-
-Select 15% of the current map points using the localisation utility and the lazy greedy algorithm
-
-> ./mselect -f local -a greedy -i ./maps/kitti05_2200.yaml -R 0.15
-
-Using the stochastic greedy algorithm instead
-
-> .mselect -f local -a stochastic -i ./maps/kitti05_2200.yaml -R 0.15 
 
 
 
