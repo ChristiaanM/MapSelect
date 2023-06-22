@@ -66,3 +66,4 @@ Using the stochastic greedy algorithm instead
 > .mselect -f local -a stochastic -i ./maps/kitti05_2200.yaml -R 0.15 
 
 
+

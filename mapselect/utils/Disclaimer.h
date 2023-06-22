@@ -1,43 +1,52 @@
-
 /*
-This file is part of MapSelect
-
-Copyright (C) 2022  Christiaan Johann Müller
-
-MapSelect is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version."
-
-MapSelect is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details."
-
-"You should have received a copy of the GNU General Public License"
-"along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ * File: Disclaimer.h
+ * Project: MapSelect
+ * Author: Christiaan Johann Müller 
+ * -----
+ * This file is part of MapSelect
+ * 
+ * Copyright (C) 2022 - 2023  Christiaan Johann Müller
+ * 
+ * MapSelect is free software: you can redistribute it and/or modify
+ * 
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * MapSelect is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
 
 
 #ifndef DISCLAIMER_H
 #define DISCLAIMER_H
 
-const char *DISCLAIMER_TXT =
-    "MapSelect \n"
-    "Copyright (C) 2022  Christiaan Johann Müller\n\n"
+namespace mselect
+{
 
-    "MapSelect is free software: you can redistribute it and/or modify "
-    "it under the terms of the GNU General Public License as published by "
-    "the Free Software Foundation, either version 3 of the License, or "
-    "(at your option) any later version.\n\n"
+    const char *DISCLAIMER_TXT =
+        "MapSelect \n"
+        "Copyright (C) 2022  Christiaan Johann Müller\n\n"
 
-    "MapSelect is distributed in the hope that it will be useful, "
-    "but WITHOUT ANY WARRANTY; without even the implied warranty of "
-    "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the "
-    "GNU General Public License for more details.\n\n"
+        "MapSelect is free software: you can redistribute it and/or modify "
+        "it under the terms of the GNU General Public License as published by "
+        "the Free Software Foundation, either version 3 of the License, or "
+        "(at your option) any later version.\n\n"
 
-    "You should have received a copy of the GNU General Public License"
-    "along with this program.  If not, see <http://www.gnu.org/licenses/>.\n\n";
+        "MapSelect is distributed in the hope that it will be useful, "
+        "but WITHOUT ANY WARRANTY; without even the implied warranty of "
+        "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the "
+        "GNU General Public License for more details.\n\n"
+
+        "You should have received a copy of the GNU General Public License"
+        "along with this program.  If not, see <http://www.gnu.org/licenses/>.\n\n";
+
+}
 
 #endif

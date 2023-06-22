@@ -1,26 +1,38 @@
-
-
 /*
-This file is part of MapSelect
+ * File: SLAMInfoCholmod.cpp
+ * Project: MapSelect
+ * Author: Christiaan Johann Müller 
+ * -----
+ * This file is part of MapSelect
+ * 
+ * Copyright (C) 2022 - 2023  Christiaan Johann Müller
+ * 
+ * MapSelect is free software: you can redistribute it and/or modify
+ * 
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * MapSelect is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
-Copyright (C) 2022  Christiaan Johann Müller
 
-MapSelect is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version."
+#include "mapselect/functions/SLAMInfoCholmod.h"
+#include "mapselect/utils/MatFuncs.h"
+#include "mapselect/utils/Timing.h"
 
-MapSelect is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details."
+extern "C" {
+#include "cholmod.h"
+}
 
-"You should have received a copy of the GNU General Public License"
-"along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-
-#include "mapselect/functions/SLAMCholmod.h"
+namespace mselect
+{
 
 typedef Eigen::Triplet<double> SparseTriplet;
 
@@ -55,8 +67,6 @@ double CholmodFactor::determinantDelta(bool update, CSCMatrix &c, bool permute)
 CholmodFactor::~CholmodFactor()
 {
     cholmod_common &common = cholmod();
-    //if (factor_copy != nullptr)
-    //    cholmod_free_factor(&factor_copy, &common);
 }
 
 bool CholmodFactor::isSuper()
@@ -84,35 +94,41 @@ void CholmodFactor::analyzeAsym(CSCMatrix &A)
     m_factorizationIsOk = false;
 }
 
-SLAMEntropyCholmod::SLAMEntropyCholmod(std::shared_ptr<MapDataAlias> map_data_ptr, GTSAMGraphSettings gsettings) : SLAMEntropyDet(map_data_ptr, gsettings)
+
+void SLAMInfoCholmod::initialize()
 {
-
-    // TODO : Avoid dense K allocations
-
-    landmark_csc.reserve(landmark_factors.size());
-    for (size_t i = 0; i < landmark_factors.size(); i++)
+    landmark_csc.reserve(landmark_A.size());
+    for (size_t i = 0; i < landmark_A.size(); i++)
     {
         landmark_csc.push_back(landmarkUpdate(i));
     }
 
-    for (size_t i = 0; i < map_data_ptr->n_points; i++)
-    {
-        updateK(i);
-    }
-
-    cholmod_factor.analyzePattern(K.sparseView());
-    resetK();
-    cholmod_factor.compute(K.sparseView());
+    allocateKsparse();
+    cholmod_factor.analyzePattern(Ksparse);
+    reset();
 }
 
-void SLAMEntropyCholmod::reset()
+SLAMInfoCholmod::SLAMInfoCholmod(std::shared_ptr<MapDataAlias> map_data_ptr, GTSAMGraphSettings gsettings) : SLAMInfoDet(map_data_ptr, gsettings)
 {
-    // TODO : Avoid dense K allocations
-    resetK();
-    cholmod_factor.compute(K.sparseView());
+    initialize();
 }
 
-CSCMatrix SLAMEntropyCholmod::landmarkUpdate(size_t key)
+SLAMInfoCholmod::SLAMInfoCholmod(std::shared_ptr<MapDataAlias> map_data_ptr, const SLAMGraph& graph) : SLAMInfoDet(map_data_ptr, graph)
+{
+    initialize();
+}
+
+void SLAMInfoCholmod::reset()
+{
+    cholmod_factor.factorize(Ksparse);
+    //cholmod_factor.compute(Ksparse);
+    //resetK();
+    //cholmod_factor.compute(K.sparseView());
+    //K.resize(0,0);
+    //K_allocated = false;
+}
+
+CSCMatrix SLAMInfoCholmod::landmarkUpdate(size_t key)
 {
     const Eigen::MatrixXd &A = landmark_A[key];
     const std::vector<size_t> &keys = landmark_keys[key];
@@ -124,35 +140,31 @@ CSCMatrix SLAMEntropyCholmod::landmarkUpdate(size_t key)
         return csc;
     csc.reserve(Eigen::VectorXi::Constant(r, keys.size() * 6));
 
-    for (size_t i = 0; i < r; i++)
+    // For every key
+    for (size_t k = 0; k < keys.size(); k++)
     {
-        for (size_t k = 0; k < keys.size(); k++)
-        {
-            size_t kj_A = k * 6;
-            size_t kj_K = keys[k] * 6;
-
-            for (size_t j = 0; j < 6; j++)
-            {
+        size_t kj_A = k * 6;
+        size_t kj_K = keys[k] * 6;
+        // there is 6 columns - of r rows
+        for (size_t j = 0; j < 6; j++)
+            for (size_t i = 0; i < r; i++)    
                 csc.insert(kj_K + j, i) = A(i, kj_A + j);
-            }
-        }
     }
+    
     return csc;
 }
 
-double SLAMEntropyCholmod::gain(size_t key)
+double SLAMInfoCholmod::gain(size_t key)
 {
     CSCMatrix csc = landmark_csc[key];
     if (csc.cols() == 0)
         return 0.0;
     ++evals;
-    // TIC(ldet);
     double gain = cholmod_factor.determinantDelta(true, csc, true) * 0.5;
-    // TOC(ldet);
-    // time_llt+=TIME(ldet);
     return gain;
 }
-void SLAMEntropyCholmod::update(size_t key)
+
+void SLAMInfoCholmod::update(size_t key)
 {
 
     CSCMatrix csc = landmark_csc[key];
@@ -160,17 +172,13 @@ void SLAMEntropyCholmod::update(size_t key)
     {
         cholmod_factor.updown(true, csc, true);
     }
-
-    // We don't need K, but can't release it earlier due to the nested constructor
-    // so we do it here instead.
-
-    // TODO : Do this better.
-    releaseK();
     evals = 0;
 }
 
-double SLAMEntropyCholmod::eval() const
+double SLAMInfoCholmod::eval() const
 {
-    // std::cout << "cholmod eval" << std::endl;
     return NegEntropyGaussian(cholmod_factor.logDeterminant(), dim);
+}
+
+
 }

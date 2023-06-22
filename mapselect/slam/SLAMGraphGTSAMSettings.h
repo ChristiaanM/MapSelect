@@ -1,5 +1,5 @@
 /*
- * File: BucketQueue.h
+ * File: SLAMGraphGTSAMSettings.h
  * Project: MapSelect
  * Author: Christiaan Johann Müller 
  * -----
@@ -24,46 +24,30 @@
 
 
 
-#ifndef BUCKET_QUEUE_H
-#define BUCKET_QUEUE_H
-
-#include <stddef.h>
-#include <utility>
-#include <vector>
-#include <queue>
-#include <stack>
-
-
+#ifndef MAPSELECT_GRAPHSETTINGS_H
+#define MAPSELECT_GRAPHSETTINGS_H
 
 namespace mselect
 {
-    /*! @brief A bucket queue allows very efficient queue operations but is limited to integer values
+
+    const double POSE_PRIOR = 1e-4;
+    const double ORIGIN_PRIOR = 1e6;
+
+    /*! @brief Struct containing different settings for the SLAM graph built for various implementations
+    of the SLAM utility function.  See SLAMGraphSLAM for more information. 
+
+    This struct is included in an separate header file to allow these settings to be passed as a paramater,
+    without requiring inclusions of relevant GTSAM headers. 
     */
-    class BucketQueue
+    struct GTSAMGraphSettings
     {
-    public:
-        BucketQueue(size_t max_val);
-
-        BucketQueue(const std::vector<std::pair<size_t, size_t>> &vect);
-
-        bool empty();
-        size_t size();
-
-        std::pair<size_t, size_t> top();
-
-        std::pair<size_t, size_t> pop();
-
-        void push(size_t key, size_t value);
-
-        void push(std::pair<size_t, size_t> kv_pair);
-        void emplace(size_t key, size_t value);
-
-    private:
-        std::vector<std::queue<size_t>> buckets;
-        size_t key_num = 0;
-        size_t last_bucket = 0;
+        bool robust = false;
+        bool stereo_only = false;
+        bool remove_outliers = false;
+        bool smart = false;
+        bool remove_limited_obs = true;
+        bool octave_scaling = false;
     };
 
 }
-
 #endif

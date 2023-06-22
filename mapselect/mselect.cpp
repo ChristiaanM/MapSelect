@@ -1,36 +1,46 @@
-
-
 /*
-This file is part of MapSelect
+ * File: mselect.cpp
+ * Project: MapSelect
+ * Author: Christiaan Johann Müller 
+ * -----
+ * This file is part of MapSelect
+ * 
+ * Copyright (C) 2022 - 2023  Christiaan Johann Müller
+ * 
+ * MapSelect is free software: you can redistribute it and/or modify
+ * 
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * MapSelect is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
-Copyright (C) 2022  Christiaan Johann Müller
-
-MapSelect is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version."
-
-MapSelect is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details."
-
-"You should have received a copy of the GNU General Public License"
-"along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
 
 #include "mapselect/algorithms/LazyGreedy.h"
 #include "mapselect/algorithms/RandomSet.h"
 #include "mapselect/algorithms/StochasticGreedy.h"
-#include "mapselect/algorithms/WeightSearch.h"
-#include "mapselect/functions/FrameEstimation.h"
-#include "mapselect/functions/SaturatedFunctions.h"
+#include "mapselect/algorithms/WeightedGreedy.h"
+#include "mapselect/functions/LoopCover.h"
+#include "mapselect/functions/LoopProb.h"
+
+
+#include "mapselect/functions/FrameLocal.h"
+#include "mapselect/functions/FrameOdometry.h"
+
 #include "mapselect/functions/SaturatedSetFunction.h"
 #include "mapselect/functions/SetCover.h"
 #include "mapselect/functions/SetFunction.h"
-#include "mapselect/functions/SLAMBase.h"
+#include "mapselect/functions/SLAMInfoDense.h"
+#include "mapselect/functions/SLAMInfoGTSAM.h"
 #include "mapselect/slam/SLAMGraphGTSAM.h"
-#include "mapselect/functions/WSearchPair.h"
+#include "mapselect/functions/WeightedFunctionPair.h"
 #include "mapselect/maps/MapDataAlias.h"
 #include "mapselect/maps/OSMapAlias.h"
 #include "mapselect/utils/BucketQueue.h"
@@ -38,8 +48,13 @@ GNU General Public License for more details."
 #include "mapselect/utils/Timing.h"
 #include "mapselect/utils/Disclaimer.h"
 
+#include "mapselect/unsupported/functions/CoverSat.h"
+#include "mapselect/unsupported/algorithms/CostBenefitGreedy.h"
+#include "mapselect/unsupported/functions/FrameEstimationLegacy.h"
+
+
 #ifdef CHOLMOD_FEATURES
-#include "mapselect/functions/SLAMCholmod.h"
+#include "mapselect/functions/SLAMInfoCholmod.h"
 #endif
 
 #ifdef GUROBI_FEATURES
@@ -57,6 +72,8 @@ GNU General Public License for more details."
 #include <boost/algorithm/string.hpp>
 
 using namespace std;
+using namespace mselect;
+
 namespace po = boost::program_options;
 
 #define ENUM_TAG(enum_type) _##enum_type
@@ -66,37 +83,52 @@ namespace po = boost::program_options;
     {                                                        \
         std::vector<std::string> enum2str(size);             \
         std::unordered_map<std::string, enum_type> str2enum; \
+        std::vector<std::string> enum2desc(size);            \
     }
 
-#define ENUM_STR(enum_type, enum, str)                    \
+#define ENUM_STR(enum_type, enum, str, desc)              \
     ENUM_TAG(enum_type)::enum2str[enum_type::enum] = str; \
-    ENUM_TAG(enum_type)::str2enum[str] = enum_type::enum
+    ENUM_TAG(enum_type)::str2enum[str] = enum_type::enum; \
+    ENUM_TAG(enum_type)::enum2desc[enum_type::enum] = desc
 #define ENUM2STR(enum_type, enum) ENUM_TAG(enum_type)::enum2str[enum]
 #define STR2ENUM(enum_type, str) ENUM_TAG(enum_type)::str2enum[str]
 #define ENUM_OPTIONS(enum_type) ENUM_TAG(enum_type)::enum2str
+#define ENUM_DESC(enum_type) ENUM_TAG(enum_type)::enum2desc
 
 enum FunctionOption
 {
     FUNCTION_ERROR = 0,
+    FUNCTION_G2O_ODOM,
+    FUNCTION_G2O_LOCAL,
+    FUNCTION_WG2OODOM_COVER,
+    FUNCTION_G2O_LOCAL_MEMORY,
+    FUNCTION_G2O_ODOM_MEMORY,
+    
+    //FUNCTION_WODOM_PROB,
+    //FUNCTION_WODOM_COVER,
 
-    FUNCTION_LOCAL,
-    FUNCTION_ODOM,
-    FUNCTION_SLAM_INFO_SLOW,
 #ifdef CHOLMOD_FEATURES
     FUNCTION_SLAM_CHOLMOD,
 #endif
 
+    FUNCTION_SLAM_INFO,
+    FUNCTION_SLAM_DETLEMMA,
+    FUNCTION_LOCAL_LEGACY,
+    FUNCTION_ODOM_LEGACY,
+    
     FUNCTION_COVER,
     FUNCTION_CACHED_COVER,
 
-    FUNCTION_ODOMETRY_COVER,
-    FUNCTION_WODOM_PROB,
-    FUNCTION_WODOM_COVER,
+    //FUNCTION_ODOMETRY_COVER,
+
+    FUNCTION_WG2OODOM_PROB,
 
 #ifdef GUROBI_FEATURES
     FUNCTION_GUROBI_IPCOVER,
-    FUNCTION_GUROBI_QIPCOVER,
+    //FUNCTION_GUROBI_QIPCOVER,
 #endif
+
+
 
     FUNCTION_SIZE // not a function
 };
@@ -107,17 +139,17 @@ enum AlgorithmOption
     ALGORITHM_LAZY_GREEDY_HEAP,
     ALGORITHM_LAZY_GREEDY_BUCKET,
     ALGORITHM_STOCHASTIC_GREEDY,
-    ALGORITHM_ESSENTIAL_MAP,
     ALGORITHM_RANDOM,
-    ALGORITHM_DEBUG_COPY,
-    ALGORITHM_QIP,
-
-    ALGORITHM_SATURATE,
-
     ALGORITHM_WSEARCH,
-    ALGORITHM_WSEARCH_ALT,
+    ALGORITHM_WGREEDY,
+    ALGORITHM_IP,
 
     ALGORITHM_LOAD,
+    ALGORITHM_DEBUG_COPY,
+    ALGORITHM_ESSENTIAL_MAP,
+    //ALGORITHM_SATURATE,
+    //ALGORITHM_COST_BENEFIT,
+
 
     ALGORITHM_SIZE // not a algorithm
 };
@@ -126,7 +158,7 @@ enum MapTypeOption
 {
     MAPTYPE_ERROR = 0,
     MAPTYPE_OSMAP,
-    MAPTYPE_BUNDLER,
+    //MAPTYPE_BUNDLER,
     MAPTYPE_SIZE
 };
 
@@ -134,61 +166,74 @@ ENUM_STR_RESERVE(FunctionOption, FUNCTION_SIZE)
 ENUM_STR_RESERVE(AlgorithmOption, ALGORITHM_SIZE)
 ENUM_STR_RESERVE(MapTypeOption, MAPTYPE_SIZE)
 
-std::string options2string(std::string prefix, std::vector<std::string> &options, std::string suffix = "")
+std::string options2string(std::string prefix, std::vector<std::string> &options, std::vector<std::string> &desc)
 {
     ostringstream oss;
-    oss << prefix;
-    for (size_t i = 1, N = options.size(); i < N; i++)
+
+    oss << "--------------------------------------------" << std::endl;
+    oss << prefix << std::endl;
+    oss << "--------------------------------------------" << std::endl;
+        
+    size_t max = 0;
+    for(size_t i = 0 ; i < options.size();i++)
+        if (options[i].size() > max)
+            max = options.size();
+
+    for (size_t i = 1; i < options.size() && i < desc.size(); i++)
     {
-        oss << options[i];
-        if (i < N - 1)
-            oss << ", ";
+
+        oss << std::left << std::setw(max) << options[i] << "   " << desc[i] << std::endl;
     }
-    oss << suffix;
     return oss.str();
 }
 
 void enum_setup(std::string &algoptions, std::string &foptions, std::string &moptions)
 {
 
-    ENUM_STR(FunctionOption, FUNCTION_SLAM_INFO_SLOW, "slamslow");
+    ENUM_STR(FunctionOption, FUNCTION_G2O_LOCAL, "local-fast","Localisation approximation");
+    ENUM_STR(FunctionOption, FUNCTION_G2O_ODOM, "odometry-fast","Odometry approximation");
+    ENUM_STR(FunctionOption, FUNCTION_G2O_LOCAL_MEMORY, "local-mem","Alternative local-fast that uses less memory");
+    ENUM_STR(FunctionOption, FUNCTION_G2O_ODOM_MEMORY, "odometry-mem","Alternative odometry-fast approximation that uses less memory");
+    ENUM_STR(FunctionOption, FUNCTION_LOCAL_LEGACY, "local-legacy","Localisation approximation using gtsam (legacy)");
+    ENUM_STR(FunctionOption, FUNCTION_ODOM_LEGACY, "odometry-legacy","Odometry approximation using gtsam (legacy)");
+
 #ifdef CHOLMOD_FEATURES
-    ENUM_STR(FunctionOption, FUNCTION_SLAM_CHOLMOD, "slamcholmod");
+    ENUM_STR(FunctionOption, FUNCTION_SLAM_CHOLMOD, "slam-cholmod", "SLAM info gain using CholMod (less slow, very expensive)");
 #endif
+    ENUM_STR(FunctionOption, FUNCTION_SLAM_DETLEMMA, "slam-dense", "SLAM info gain using matrix det lemma (for debugging - exceptionally slow)");
+    ENUM_STR(FunctionOption, FUNCTION_SLAM_INFO, "slam-gtsam", "SLAM info gain using gtsam (for debugging - exceptionally slow)");
 
-    ENUM_STR(FunctionOption, FUNCTION_LOCAL, "local");
-    ENUM_STR(FunctionOption, FUNCTION_ODOM, "odometry");
+    
+    ENUM_STR(FunctionOption, FUNCTION_WG2OODOM_COVER,"wodom+cover","Combined odometry+cover formulation, use with wgreedy to normalise properly. Additionally, loop closure frames must be provided.");
+    ENUM_STR(FunctionOption, FUNCTION_WG2OODOM_PROB,"wodom+prob","Combined odometry+cover formulation, use with wgreedy to normalise properly. Additionally, loop closure frames must be provided.");
 
-    ENUM_STR(FunctionOption, FUNCTION_ODOMETRY_COVER, "odom+cover");
-    ENUM_STR(FunctionOption, FUNCTION_WODOM_COVER, "wodom+cover");
-    ENUM_STR(FunctionOption, FUNCTION_WODOM_PROB, "wodom+prob");
+    ENUM_STR(FunctionOption, FUNCTION_COVER, "cover","frame coverage");
+    ENUM_STR(FunctionOption, FUNCTION_CACHED_COVER, "cover-alt","alternate implementation of frame coverage");
 
-    ENUM_STR(FunctionOption, FUNCTION_COVER, "cover");
-    ENUM_STR(FunctionOption, FUNCTION_CACHED_COVER, "cached");
+    ENUM_STR(AlgorithmOption, ALGORITHM_LAZY_GREEDY_HEAP, "greedy","Classic lazy greedy algorithm");
+    ENUM_STR(AlgorithmOption, ALGORITHM_LAZY_GREEDY_BUCKET, "bucket","Lazy greedy algorithm for integer objectives");
+    ENUM_STR(AlgorithmOption, ALGORITHM_STOCHASTIC_GREEDY, "stochastic","Stochastic greedy, adjust -eps to trade-off execution time and function value.");
+    ENUM_STR(AlgorithmOption, ALGORITHM_RANDOM, "random","Randomly select map points");
+    ENUM_STR(AlgorithmOption, ALGORITHM_ESSENTIAL_MAP, "essential","Debugging - remove all non-map point data");
+    ENUM_STR(AlgorithmOption, ALGORITHM_DEBUG_COPY, "copy","Debugging - Just copy a map");
+    ENUM_STR(AlgorithmOption, ALGORITHM_LOAD, "load","Debugging - load a selection");
 
-    ENUM_STR(AlgorithmOption, ALGORITHM_LAZY_GREEDY_HEAP, "greedy");
-    ENUM_STR(AlgorithmOption, ALGORITHM_LAZY_GREEDY_BUCKET, "bucket");
-    ENUM_STR(AlgorithmOption, ALGORITHM_STOCHASTIC_GREEDY, "stochastic");
-    ENUM_STR(AlgorithmOption, ALGORITHM_ESSENTIAL_MAP, "essential");
-    ENUM_STR(AlgorithmOption, ALGORITHM_DEBUG_COPY, "copy");
-
-    ENUM_STR(AlgorithmOption, ALGORITHM_RANDOM, "random");
-    ENUM_STR(AlgorithmOption, ALGORITHM_LOAD, "load");
     // ENUM_STR(AlgorithmOption, ALGORITHM_SATURATE, "saturate");
-    ENUM_STR(AlgorithmOption, ALGORITHM_WSEARCH, "wsearch");
-    // ENUM_STR(AlgorithmOption, ALGORITHM_WSEARCH_ALT, "wsearch2");
+    ENUM_STR(AlgorithmOption, ALGORITHM_WGREEDY, "wgreedy","Use with combined odometry+cover formulations");
+    ENUM_STR(AlgorithmOption, ALGORITHM_WSEARCH, "wsearch","Unsupported - search over weights for combined formulations");
 
-    ENUM_STR(MapTypeOption, MAPTYPE_OSMAP, "osmap");
+    ENUM_STR(MapTypeOption, MAPTYPE_OSMAP, "osmap","OSMAP file type");
 
 #ifdef GUROBI_FEATURES
-    ENUM_STR(FunctionOption, FUNCTION_GUROBI_IPCOVER, "ip_cover");
-    ENUM_STR(FunctionOption, FUNCTION_GUROBI_QIPCOVER, "qip_cover");
-    ENUM_STR(AlgorithmOption, ALGORITHM_QIP, "iprogram");
+    ENUM_STR(FunctionOption, FUNCTION_GUROBI_IPCOVER, "ip_cover","Integer programming approach - use with iprogram algorithm");
+    ENUM_STR(AlgorithmOption, ALGORITHM_IP, "iprogram","Gurobi Solver - use with ip-cover");
 #endif
 
-    foptions = options2string("Function to optimise. Choose any of the following: ", ENUM_OPTIONS(FunctionOption));
-    algoptions = options2string("Algorithm Implementations. Choose any of the following: ", ENUM_OPTIONS(AlgorithmOption));
-    moptions = options2string("Maptyp. Choose any of the follwoing: ", ENUM_OPTIONS(MapTypeOption));
+    foptions = "Function to optimise. Use --help for more details.";
+    algoptions = "Algorithm implementation. Use --help for more details.";
+    moptions = "MapType - Only osmap is currently supported in public release";
+
+ 
 }
 
 istream &operator>>(istream &in, FunctionOption &func)
@@ -294,7 +339,10 @@ int main(int argc, char const *argv[])
 
     if (vm.count("help") || argc == 1)
     {
-        std::cout << description;
+        std::cout << description << std::endl;
+        std::cout << options2string("Function Options (-f)",ENUM_OPTIONS(FunctionOption),ENUM_DESC(FunctionOption));
+        std::cout << options2string("Algorithm Options (-a)",ENUM_OPTIONS(AlgorithmOption),ENUM_DESC(AlgorithmOption));
+
         return 0;
     }
 
@@ -327,13 +375,13 @@ int main(int argc, char const *argv[])
         return 1;
     }
     */
-    if (maptype_option == MAPTYPE_BUNDLER)
+    /*if (maptype_option == MAPTYPE_BUNDLER)
     {
         last_frames = 0;
         out_ext = ".out";
     }
-    else
-        out_ext = ".yaml";
+    else*/
+    out_ext = ".yaml";
 
     if (algorithm_option == ALGORITHM_LAZY_GREEDY_BUCKET && !f_uint)
     {
@@ -521,84 +569,128 @@ int main(int argc, char const *argv[])
     {
     case FUNCTION_COVER:
         if (f_uint)
-            func_i = std::make_shared<GreedyCover<size_t>>(map_data, B, l_uint);
+            func_i = std::make_shared<FrameCoverage<size_t>>(map_data, B, l_uint);
         else
-            func_d = std::make_shared<GreedyCover<double>>(map_data, B, l_double);
+            func_d = std::make_shared<FrameCoverage<double>>(map_data, B, l_double);
         break;
     case FUNCTION_CACHED_COVER:
         if (f_uint)
-            func_i = std::make_shared<CachedGreedyCover<size_t>>(map_data, B, l_uint);
+            func_i = std::make_shared<CachedFrameCoverage<size_t>>(map_data, B, l_uint);
         else
-            func_d = std::make_shared<CachedGreedyCover<double>>(map_data, B, l_double);
+            func_d = std::make_shared<CachedFrameCoverage<double>>(map_data, B, l_double);
         break;
-    case FUNCTION_LOCAL:
-        func_d = std::make_shared<FrameEstimation>(map_data, EntropyMode::LOCAL);
+    case FUNCTION_LOCAL_LEGACY:
+        func_d = std::make_shared<FrameEstimationLegacy>(map_data, FrameEstimationFunction::LEGACY_GTSAM_LOCAL);
         f_uint = false;
         break;
-    case FUNCTION_ODOM:
-        func_d = std::make_shared<FrameEstimation>(map_data, EntropyMode::ODOMETRY);
+    case FUNCTION_ODOM_LEGACY:
+        func_d = std::make_shared<FrameEstimationLegacy>(map_data, FrameEstimationFunction::LEGACY_GTSAM_ODOMETRY);
         f_uint = false;
         break;
-    case FUNCTION_ODOMETRY_COVER:
+    /*case FUNCTION_ODOMETRY_COVER:
     {
         {
             auto func_tmp = std::make_shared<LoopCover>(map_data, cover_frames);
-            auto func_odom = std::make_shared<FrameEstimation>(map_data, EntropyMode::ODOMETRY, true);
-            auto joined_func = std::make_shared<DualSaturatedSetFunction<LoopCover, FrameEstimation>>(func_tmp, l_double, func_odom, 10e3);
+            auto func_odom = std::make_shared<FrameEstimationLegacy>(map_data, FrameEstimationFunction::LEGACY_GTSAM_ODOMETRY, true);
+            auto joined_func = std::make_shared<TwinSaturatedSetFunction<LoopCover, FrameEstimationLegacy>>(func_tmp, l_double, func_odom, 10e3);
             func_d = joined_func;
+            f_uint = false;
+        }
+        break;
+    }*/
+    /*case FUNCTION_WODOM_COVER:
+    {
+        {
+            auto func_odom = std::make_shared<FrameEstimationLegacy>(map_data, FrameEstimationFunction::LEGACY_GTSAM_ODOMETRY, true);
+            func_odom->changeB(func_odom->getBmax());
+            auto func_cover = std::make_shared<LoopCover>(map_data, cover_frames);
+            func_cover->changeB(B);
+            auto wfunc = std::make_shared<WeightedFunctionPair>(func_odom, func_cover);
+            func_d = wfunc;
+            f_uint = false;
+        }
+        break;
+    }*/
+    case FUNCTION_WG2OODOM_COVER:
+    {
+        {
+            auto func_odom = std::make_shared<FrameEstimationLegacy>(map_data, FrameEstimationFunction::LEGACY_G2O_ODOM, true);
+            func_odom->changeB(func_odom->getBmax());
+            auto func_cover = std::make_shared<LoopCover>(map_data, cover_frames);
+            func_cover->changeB(B);
+            auto wfunc = std::make_shared<WeightedFunctionPair>(func_odom, func_cover);
+            func_d = wfunc;
             f_uint = false;
         }
         break;
     }
 
-    case FUNCTION_WODOM_COVER:
+    case FUNCTION_WG2OODOM_PROB:
     {
         {
-            auto func_odom = std::make_shared<FrameEstimation>(map_data, EntropyMode::ODOMETRY, true);
+            auto func_odom = std::make_shared<FrameEstimationLegacy>(map_data, FrameEstimationFunction::LEGACY_G2O_ODOM, true);
             func_odom->changeB(func_odom->getBmax());
-            auto func_cover = std::make_shared<LoopCover>(map_data, cover_frames);
+            auto func_cover = std::make_shared<LoopProbCoverPvis>(map_data, cover_frames);
             func_cover->changeB(B);
-            auto wfunc = std::make_shared<WSearchPair>(func_odom, func_cover);
+            auto wfunc = std::make_shared<WeightedFunctionPair>(func_odom, func_cover);
             func_d = wfunc;
             f_uint = false;
         }
         break;
     }
-    case FUNCTION_WODOM_PROB:
+
+    /*case FUNCTION_WODOM_PROB:
     {
         {
-            auto func_odom = std::make_shared<FrameEstimation>(map_data, EntropyMode::ODOMETRY, true);
+            auto func_odom = std::make_shared<FrameEstimationLegacy>(map_data, FrameEstimationFunction::LEGACY_GTSAM_ODOMETRY, true);
             func_odom->changeB(func_odom->getBmax());
-            auto func_cover = std::make_shared<OracleVisCover>(map_data, cover_frames);
+            auto func_cover = std::make_shared<LoopProbCoverPvis>(map_data, cover_frames);
             func_cover->changeB(B);
-            auto wfunc = std::make_shared<WSearchPair>(func_odom, func_cover);
+            auto wfunc = std::make_shared<WeightedFunctionPair>(func_odom, func_cover);
             func_d = wfunc;
             f_uint = false;
         }
         break;
-    }
-    case FUNCTION_SLAM_INFO_SLOW:
-        func_d = std::make_shared<SLAMEntropy>(map_data);
+    }*/
+    case FUNCTION_SLAM_INFO:
+        func_d = std::make_shared<SLAMInfoGTSAM>(map_data);
         f_uint = false;
         break;
+    case FUNCTION_SLAM_DETLEMMA:
+        func_d = std::make_shared<SLAMInfoDet>(map_data);
+        f_uint = false;
+        break;
+    
+    case FUNCTION_G2O_ODOM:
+        func_d = std::make_shared<FrameEstimationLegacy>(map_data, FrameEstimationFunction::LEGACY_G2O_ODOM);
+        f_uint = false;
+        break;
+
+    case FUNCTION_G2O_LOCAL:
+        func_d = std::make_shared<FrameEstimationLegacy>(map_data, FrameEstimationFunction::LEGACY_G2O_LOCAL);
+        f_uint = false;
+        break;
+
+    case FUNCTION_G2O_ODOM_MEMORY:
+        func_d = std::make_shared<FrameOdometryMemory>(map_data);
+        f_uint = false;
+        break;
+
+    case FUNCTION_G2O_LOCAL_MEMORY:
+        func_d = std::make_shared<FrameLocalMemory>(map_data);
+        f_uint = false;
+        break;
+
 #ifdef CHOLMOD_FEATURES
     case FUNCTION_SLAM_CHOLMOD:
-        func_d = std::make_shared<SLAMEntropyCholmod>(map_data);
+        func_d = std::make_shared<SLAMInfoCholmod>(map_data);
         f_uint = false;
         break;
 #endif
     default:
         break;
     }
-    {
-        std::shared_ptr<SaturatedSetFunction> func_sat = std::dynamic_pointer_cast<SaturatedSetFunction>(func_d);
-        if (func_sat && algorithm_option != ALGORITHM_SATURATE)
-        {
-            if (B == 0)
-                B = ceil(func_sat->getBmax());
-            func_sat->changeB(B);
-        }
-    }
+
     TOC(fsetup);
     time_fsetup = TIME(fsetup);
 
@@ -677,7 +769,7 @@ int main(int argc, char const *argv[])
             }
 
             TIC(dealias);
-            selected_ids = map_data->dealias_mappoints(func_i->getSelected());
+            selected_ids = map_data->convertMappointKeysToIDs(func_i->getSelected());
             TOC(dealias);
             time_dealias = TIME(dealias);
         }
@@ -693,14 +785,24 @@ int main(int argc, char const *argv[])
             case ALGORITHM_STOCHASTIC_GREEDY:
                 StochasticGreedy(*func_d, valid_keys, N_greedy, eps);
                 break;
-
-                break;
+            /*case ALGORITHM_COST_BENEFIT:
+                {
+                    //auto func_deval = std::dynamic_pointer_cast<EvaluableFunction<double>>(func_d);
+                    std::vector<double> costs;
+                    for(size_t i=0;i<map_data->n_points;i++)
+                        costs.push_back(map_data->getMappointCost(i));
+                    if (func_d)
+                        CostBenefitGreedy<double,StablePriorityQueue<double>>(*func_d,valid_keys,costs,(double) N);
+                }
+                break;*/
             case ALGORITHM_WSEARCH:
             {
-                std::shared_ptr<WSearchPair> func_search = std::dynamic_pointer_cast<WSearchPair>(func_d);
+                std::shared_ptr<WeightedFunctionPair> func_search = std::dynamic_pointer_cast<WeightedFunctionPair>(func_d);
                 if (func_search)
                 {
-                    WBinarySearch(*func_search, valid_keys, heuristic_keys, N);
+                    WSearchSettings settings;
+                    settings.norm_scheme = WeightingNormalisationScheme::NORM_LAZY_GREEDY;
+                    WeightedBinarySearch(*func_search, valid_keys, heuristic_keys, N,settings);
                 }
                 else
                 {
@@ -709,15 +811,16 @@ int main(int argc, char const *argv[])
                 }
             }
             break;
-            case ALGORITHM_WSEARCH_ALT:
+            break;
+            case ALGORITHM_WGREEDY:
             {
-                std::shared_ptr<WSearchPair> func_search = std::dynamic_pointer_cast<WSearchPair>(func_d);
+                WSearchSettings settings_one_iter;
+                settings_one_iter.max_iters = 1;
+                settings_one_iter.norm_scheme = WeightingNormalisationScheme::NORM_FULL_SET;
+                std::shared_ptr<WeightedFunctionPair> func_search = std::dynamic_pointer_cast<WeightedFunctionPair>(func_d);
                 if (func_search)
                 {
-                    WSearchSettings settings;
-                    settings.eps_fm = 0.01;
-                    settings.norm_scheme = WNormScheme::LAZY_GREEDY;
-                    WBinarySearch(*func_search, valid_keys, heuristic_keys, N, settings);
+                    WeightedBinarySearch(*func_search, valid_keys, heuristic_keys, N,settings_one_iter);
                 }
                 else
                 {
@@ -734,7 +837,7 @@ int main(int argc, char const *argv[])
             }
 
             TIC(dealias);
-            selected_ids = map_data->dealias_mappoints(func_d->getSelected());
+            selected_ids = map_data->convertMappointKeysToIDs(func_d->getSelected());
             TOC(dealias);
             time_dealias = TIME(dealias);
         }
@@ -742,22 +845,22 @@ int main(int argc, char const *argv[])
         {
             std::vector<size_t> selected_keys;
 #ifdef GUROBI_FEATURES
-            if (algorithm_option == ALGORITHM_QIP)
+            if (algorithm_option == ALGORITHM_IP)
             {
-                if (func_option != FUNCTION_GUROBI_IPCOVER and func_option != FUNCTION_GUROBI_QIPCOVER)
+                if (func_option != FUNCTION_GUROBI_IPCOVER) //and func_option != FUNCTION_GUROBI_QIPCOVER)
                 {
                     cout << ENUM2STR(AlgorithmOption, algorithm_option) << " not a valid algorithm for " << ENUM2STR(FunctionOption, func_option) << endl;
                     return 1;
                 }
 
-                GurobiQIPSettings ipsettings;
+                GurobiSettings ipsettings;
                 ipsettings.b = B;
                 ipsettings.b_min = B_min;
                 ipsettings.lambda = l_double;
                 ipsettings.N = N;
-                ipsettings.quad_penalty = (func_option == FUNCTION_GUROBI_QIPCOVER);
+                //ipsettings.quad_penalty = (func_option == FUNCTION_GUROBI_QIPCOVER);
                 ipsettings.forced_keys = &heuristic_keys;
-                selected_keys = GurobiCoverQIP(*map_data, ipsettings);
+                selected_keys = GurobiIPCover(*map_data, ipsettings);
             }
             else
 #endif
@@ -771,7 +874,7 @@ int main(int argc, char const *argv[])
                 return 1;
             }
             TIC(dealias);
-            selected_ids = map_data->dealias_mappoints(selected_keys);
+            selected_ids = map_data->convertMappointKeysToIDs(selected_keys);
             TOC(dealias);
             time_dealias = TIME(dealias);
         }
@@ -863,11 +966,10 @@ int main(int argc, char const *argv[])
 
     if (verbose)
     {
-        std::shared_ptr<SaturatedSetFunction> func_sat = std::dynamic_pointer_cast<SaturatedSetFunction>(func_d);
-        if (func_sat && algorithm_option != ALGORITHM_SATURATE)
-        {
-            func_sat->print();
-        }
+        if (func_d)
+            func_d->print();
+        if (func_i)
+            func_i->print();
     }
 
     if (verbose)

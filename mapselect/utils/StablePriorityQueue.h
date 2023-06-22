@@ -1,105 +1,106 @@
-
 /*
-This file is part of MapSelect
+ * File: StablePriorityQueue.h
+ * Project: MapSelect
+ * Author: Christiaan Johann Müller 
+ * -----
+ * This file is part of MapSelect
+ * 
+ * Copyright (C) 2022 - 2023  Christiaan Johann Müller
+ * 
+ * MapSelect is free software: you can redistribute it and/or modify
+ * 
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * MapSelect is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
-Copyright (C) 2022  Christiaan Johann Müller
-
-MapSelect is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version."
-
-MapSelect is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details."
-
-"You should have received a copy of the GNU General Public License"
-"along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
 
 
 #ifndef STABLE_PRIORITY_QUEUE
 #define STABLE_PRIORITY_QUEUE
 
-
 #include <queue>
 
 
-/*
-A stable priority queue ensures that if two elements have equal priority,
-they will be popped in insertion order. This gaurentees that the selected
-elements are identical regardless of queue implementation. 
-*/
-
-template<class T>
-class StablePriorityQueue
-{  
-   
-   
-    struct PQEntry
+namespace mselect
+{
+    
+    /*! @brief 
+    A stable priority queue ensures that if two elements have equal priority,
+    they will be popped in insertion order. This guarantees that the selected
+    elements are identical regardless of queue implementation.
+    */
+    template <class T>
+    class StablePriorityQueue
     {
-        size_t key;
-        size_t cnt;
-        T value;
 
-        PQEntry(size_t key, T value, size_t cnt ): key(key), value(value), cnt(cnt)
+        struct PQEntry
         {
-        }
+            size_t key;
+            T value;
+            size_t cnt;
 
-        PQEntry(const std::pair<size_t, T>& pair, size_t cnt) : key(pair.first), value(pair.second), cnt(cnt)
+            PQEntry(size_t key, T value, size_t cnt) : key(key), value(value), cnt(cnt)
+            {
+            }
+
+            PQEntry(const std::pair<size_t, T> &pair, size_t cnt) : key(pair.first), value(pair.second), cnt(cnt)
+            {
+            }
+        };
+
+        struct PQComparator
         {
-        }
-    };
+            bool operator()(const PQEntry &lhs, const PQEntry &rhs) const
+            {
+                if (lhs.value != rhs.value)
+                    return lhs.value < rhs.value;
+                return lhs.cnt > rhs.cnt;
+            }
+        };
 
-
-    struct PQComparator
-    {
-        bool operator()(const PQEntry &lhs, const PQEntry &rhs) const
-        {
-            if (lhs.value != rhs.value)
-                return lhs.value < rhs.value;
-            return lhs.cnt > rhs.cnt;
-        }
-    };
-
-    typedef std::priority_queue<PQEntry,std::vector<PQEntry>, PQComparator> PQType;
-
-
+        typedef std::priority_queue<PQEntry, std::vector<PQEntry>, PQComparator> PQType;
 
     public:
-        StablePriorityQueue(const std::vector<std::pair<size_t,T>>& vect)
+        StablePriorityQueue(const std::vector<std::pair<size_t, T>> &vect)
         {
             std::vector<PQEntry> tmp;
             tmp.reserve(vect.size());
-            entry_cnt = 0;
+            counter = 0;
 
-            for(const std::pair<size_t,T>& p: vect)
-                tmp.emplace_back(p,entry_cnt++);
+            for (const std::pair<size_t, T> &p : vect)
+                tmp.emplace_back(p, counter++);
 
-            queue = PQType(PQComparator(),tmp);      
+            queue = PQType(PQComparator(), tmp);
         }
 
-
-        void push(std::pair<size_t,T> pair)
+        void push(std::pair<size_t, T> pair)
         {
-            queue.emplace(pair.first,pair.second,entry_cnt++);
+            queue.emplace(pair.first, pair.second, counter++);
         }
 
         void emplace(size_t key, T value)
         {
-            queue.emplace(key,value,entry_cnt++);
+            queue.emplace(key, value, counter++);
         }
 
         void pop()
         {
             queue.pop();
         }
-        
-        std::pair<size_t,T> top()
+
+        std::pair<size_t, T> top()
         {
             auto tmp = queue.top();
-            return std::make_pair(tmp.key,tmp.value);
+            return std::make_pair(tmp.key, tmp.value);
         }
 
         bool empty()
@@ -107,12 +108,9 @@ class StablePriorityQueue
             return queue.empty();
         }
 
-
     protected:
-       PQType queue;
-       size_t entry_cnt = 0;
-
-
-};
-
+        PQType queue;
+        size_t counter = 0;
+    };
+}
 #endif

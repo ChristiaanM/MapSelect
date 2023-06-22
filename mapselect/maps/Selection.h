@@ -18,109 +18,106 @@ GNU General Public License for more details."
 "along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef SELECTION_H
-#define SELECTION_H
+#ifndef MAPSELECT_SELECTION_H
+#define MAPSELECT_SELECTION_H
 
 #include <iostream>
 #include <vector>
 #include <unordered_set>
 
-//using namespace std;
-
-
-
-class Selector
+namespace mselect
 {
-    public: 
-        virtual bool select_mappoint(size_t map_id) const = 0; 
+
+    /*! @brief Class to support selecting more than map points. Still used by MapData
+    @todo rework this
+    */
+    class Selector
+    {
+    public:
+        virtual bool select_mappoint(size_t map_id) const = 0;
         virtual bool select_keyframe(size_t keyframe_id) const = 0;
         virtual bool select_feature(size_t keyframe_id, size_t map_id) const = 0;
-};
+    };
 
-class DummySelector : public Selector
-{
-    public: 
+    class DummySelector : public Selector
+    {
+    public:
         DummySelector() {}
 
-        bool select_mappoint(size_t map_id) const 
+        bool select_mappoint(size_t map_id) const
         {
             return true;
-        } 
-        bool select_keyframe(size_t keyframe_id) const 
+        }
+        bool select_keyframe(size_t keyframe_id) const
         {
             return true;
         };
 
-        bool select_feature(size_t keyframe_id, size_t map_id) const 
+        bool select_feature(size_t keyframe_id, size_t map_id) const
         {
             return true;
         }
+    };
 
-};
-
-
-class EssentialSelector : public Selector
-{
-    public: 
-        EssentialSelector(size_t last_frame): last_frame(last_frame)
-        {}
-        bool select_mappoint(size_t map_id) const 
+    class EssentialSelector : public Selector
+    {
+    public:
+        EssentialSelector(size_t last_frame) : last_frame(last_frame)
+        {
+        }
+        bool select_mappoint(size_t map_id) const
         {
             return true;
-        } 
-        bool select_keyframe(size_t keyframe_id) const 
+        }
+        bool select_keyframe(size_t keyframe_id) const
         {
             return true;
         };
 
-        bool select_feature(size_t keyframe_id, size_t map_id) const 
+        bool select_feature(size_t keyframe_id, size_t map_id) const
         {
-            return  map_id; //keyframe_id == last_frame ||
+            return map_id; // keyframe_id == last_frame ||
         }
 
-    protected: 
+    protected:
         size_t last_frame;
-};
+    };
 
+    class MappointSelector : public EssentialSelector
+    {
 
-class MappointSelector : public EssentialSelector
-{
-
-    public: 
-        MappointSelector(const std::vector<size_t> &ids, size_t last_frame) : EssentialSelector(last_frame), hashset(ids.begin(),ids.end())
+    public:
+        MappointSelector(const std::vector<size_t> &ids, size_t last_frame) : EssentialSelector(last_frame), hashset(ids.begin(), ids.end())
         {
         }
 
-        bool select_mappoint(size_t map_id) const 
+        bool select_mappoint(size_t map_id) const
         {
             return hashset.find(map_id) != hashset.end();
-        } 
-        bool select_feature(size_t keyframe_id, size_t map_id) const 
+        }
+        bool select_feature(size_t keyframe_id, size_t map_id) const
         {
             return (hashset.find(map_id) != hashset.end());
         }
 
-
     protected:
         std::unordered_set<size_t> hashset;
+    };
 
-};
+    class MappointDescriptorSelector : public MappointSelector
+    {
 
-
-class MappointDescriptorSelector : public MappointSelector 
-{
-
-    public: 
-         MappointDescriptorSelector(const std::vector<size_t> &ids, size_t last_frame) : MappointSelector(ids,last_frame)
+    public:
+        MappointDescriptorSelector(const std::vector<size_t> &ids, size_t last_frame) : MappointSelector(ids, last_frame)
         {
         }
 
-        bool select_mappoint(size_t map_id) const 
+        bool select_mappoint(size_t map_id) const
         {
             return true;
-        } 
-};
+        }
+    };
 
-
+}
 
 #endif
