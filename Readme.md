@@ -51,17 +51,17 @@ protoc --version is the same version than what is linked as compilation time.
 
 Option 1 - Download some sample maps or generate your own with the modified ORB-SLAM 2 linked above.
 
-Use the ./mselect binary to apply a map point selection approach to maps offline. This binary allows choosing on of a array of map point selection methods. 
-For example:
+Use the ./mselect binary to apply a map point selection approach to maps offline. For example:
 
 ./mselect -f odometry-fast -a greedy -N 20000 -i ~/kitti00_4300.yaml --v
 
-mselect.cpp for more details. (./mselect provides acces to an array of different map point selection approaches)
+Call ./mselect for more details
 
-Call ./mselect for more details.
+Option B  - Link the library to use in your own code. Before you can do this, it is important to note that you need to repack 
+the SLAM problem into a MapDataAlias object (which has some requirements - see mapselect/maps/MapDataAlias.h and mapselect/maps/OSMAPDataAlias.h 
+for more details). This allows you to use any of the build in selection algorithms (see mapselect/algorithms/) and functions (see mapselect/functions/)
+Documentation for this will be expanded in a future update.
 
-Option B  - Link to the library and write your own code to build a MapDataAlias object (See MapDataAlias.h for more details) for your SLAM problem. 
-(Documentation for this is WIP)
 
 [^fn]: Christiaan J. M\"{u}ller and Corn\'e van Daalen. "Map Point Selection for Visual SLAM". In: <em> ArXiv e-prints </em>. arXiv:2306.1290.
 
