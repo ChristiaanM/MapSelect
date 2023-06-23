@@ -18,6 +18,8 @@ Map select is a library that implements different map point selection approaches
 Distributed under the GPLv3 License. See `LICENSE` for more information.
 ## Dependancies
 
+CMake (https://cmake.org/)
+
 Eigen3 (https://eigen.tuxfamily.org/i)
  
 Protobuf (https://github.com/protocolbuffers/protobuf)
@@ -45,7 +47,27 @@ run the "build.sh" script in the root directory
 Having multiple versions of protocal buffers can cause issues with linking at runtime. If you are on a linux based machine, be sure to check that 
 protoc --version is the same version than what is linked as compilation time. 
 
+## Usage 
+
+Option 1 - Download some sample maps or generate your own with the modified ORB-SLAM 2 linked above.
+
+Use the ./mselect binary to apply a map point selection approach to maps offline. This binary allows choosing on of a array of map point selection methods. 
+For example:
+
+./mselect -f odometry-fast -a greedy -N 20000 -i ~/kitti00_4300.yaml --v
+
+mselect.cpp for more details. (./mselect provides acces to an array of different map point selection approaches)
+
+Call ./mselect for more details.
+
+Option B  - Link to the library and write your own code to build a MapDataAlias object (See MapDataAlias.h for more details) for your SLAM problem. 
+(Documentation for this is WIP)
+
 [^fn]: Christiaan J. M\"{u}ller and Corn\'e van Daalen. "Map Point Selection for Visual SLAM". In: <em> ArXiv e-prints </em>. arXiv:2306.1290.
+
+
+
+
 
 
 
