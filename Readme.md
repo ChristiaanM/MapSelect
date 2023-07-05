@@ -62,8 +62,7 @@ the SLAM problem into a MapDataAlias object (which has some requirements - see m
 for more details). This allows you to use any of the build in selection algorithms (see mapselect/algorithms/) and functions (see mapselect/functions/)
 Documentation for this will be expanded in a future update.
 
-
-[^fn]: Christiaan J. M\"{u}ller and Corn\'e van Daalen. "Map Point Selection for Visual SLAM". In: <em> ArXiv e-prints </em>. arXiv:2306.1290.
+‌[^fn]: Müller, C. J., & van Daalen, C. E. (2023). Map point selection for visual SLAM. <em> Robotics and Autonomous Systems</em>, 167, 104485. https://doi.org/https://doi.org/10.1016/j.robot.2023.104485
 
 
 

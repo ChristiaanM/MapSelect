@@ -49,7 +49,6 @@
 #include "mapselect/utils/Disclaimer.h"
 
 #include "mapselect/unsupported/functions/CoverSat.h"
-#include "mapselect/unsupported/algorithms/CostBenefitGreedy.h"
 #include "mapselect/unsupported/functions/FrameEstimationLegacy.h"
 
 
